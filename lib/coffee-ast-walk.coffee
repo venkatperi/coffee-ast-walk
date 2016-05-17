@@ -3,91 +3,110 @@ type = ( node ) -> node?.type or node.constructor.name
 isCSNode = ( n ) -> n?.compile?
 
 class NodeVisitor
-  constructor : ( @node, @walk, @parent ) ->
-    @path = @walk.path
+  constructor : ( @opts ) ->
+    @path = @opts.path
     @depth = @path.length is 0
     @isRoot = @depth is 0
     @id = @path[ -1.. ][ 0 ]
-    @isAstNode = isCSNode @node
-    @context = @walk.context
-    @isLeaf = !_.isObjectLike @node
+    @isAstNode = isCSNode @opts.node
+    if @isAstNode
+      @type = type @opts.node
+      @parent = @opts.parent
+    @context = @opts.context
+    @isLeaf = !_.isObjectLike @opts.node
 
-  abort : => @walk.abort = true
+  visit : =>
+    @opts.visitor.call @, @opts.node
 
-  visit : => @walk.visitor.call @, @node
+  abort : =>
+    @opts.abort = true
 
 class Walk
-  constructor : ( @visitor, @context ) ->
-    @path = []
-    @abort = false
+  constructor : ( @node ) ->
+    @meta()
 
-  walk : ( node, id, parent ) =>
-    return unless node
-    @_pushPath id if id?
-    @visit node, parent
+  _walk : ( opts ) =>
+    return unless opts?.node or opts?.abort
+    node = opts.node
+    opts.path ?= []
+    opts.context ?= {}
+    opts.path.push opts.id if opts.id
 
     if _.isObjectLike node
-      for own attr, val of node when val
-        if Array.isArray val
-          for child, i in val
-            @walk child, "#{attr}[#{i}]", node
-        else
-          @walk val, attr, node unless attr.indexOf('__') is 0
+      for own attr, ret of node when ret
+        if Array.isArray ret
+          for child, i in ret
+            o = _.assign {}, opts,
+              node : child,
+              parent : node
+              id : "#{attr}[#{i}]"
+            @_walk o
+        else if attr.indexOf('__') isnt 0
+          o = _.assign {}, opts,
+            node : ret,
+            parent : node
+            id : attr
+          @_walk o
 
-    @_popPath()
-    node
+    new NodeVisitor(opts).visit()
 
-  visit : ( node, parent ) =>
-    return if @abort
-    new NodeVisitor node, @, parent
-    .visit()
-
-  _pushPath : ( id ) => @path.push id
-
-  _popPath : => @path = @path[ 0..-2 ]
-
-_walk = ( node, context, visitor ) ->
-  [visitor, context] = [ context, visitor ] unless visitor
-  throw new Error 'Missing argument: ast node' unless node?
-  throw new Error 'Missing argument: visitor' unless visitor?
-  new Walk(visitor, context).walk node
-
-astwalk = ( node ) ->
   walk : ( context, visitor ) ->
-    _walk node, context, visitor
+    [visitor, context] = [ context, visitor ] unless visitor
+    throw new Error 'Missing argument: visitor' unless visitor?
+    @_walk node : @node, visitor : visitor, context : context
 
-  findByType : ( t ) ->
-    items = []
-    _walk node, ( x ) -> items.push x if type(x) is t
-    items
+  meta : =>
+    return if @node.__type?
+    @walk nextId : 0, ( x ) ->
+      return unless @isAstNode
+      x.__id = @context.nextId++
+      x.__type = type x
+      x.__parent = @parent
+      x
 
-  findFirstByType : ( t ) ->
+  findByType : ( t ) =>
+    @walk [], ( x ) ->
+      @context.push x if type(x) is t
+      @context
+
+  findFirstByType : ( t ) =>
     item = undefined
-    _walk node, ( x ) ->
+    @walk ( x ) ->
       if type(x) is t and !item
         item = x
         @abort()
     item
 
-  reduce : ( acc, cb ) ->
-    [cb, acc] = [acc, cb] unless cb?
-    _walk node, ( x ) -> acc = cb.call @, x, acc
+  reduce : ( acc, f ) =>
+    [f, acc] = [ acc, f ] unless f?
+    @walk ( x ) -> acc = f.call @, x, acc
     acc
 
-  cleanup : ->
-    meta = {}
-    nextId = 0
-    _walk node, ( x ) ->
+  findParent : ( f ) =>
+    parent = @node
+    while (parent = parent.__parent)
+      return parent if f parent
+
+  findParentByType : ( t ) =>
+    @findParent ( x ) -> x.__type is t
+
+  up : ( fn ) =>
+    parent = @node
+    while (parent = parent.__parent)
+      fn parent
+
+  cleanup : =>
+    return if @positionData?
+    @positionData = {}
+    @walk @positionData, ( x ) ->
       return unless @isAstNode
-      id = x.__id = nextId++
-      x.__type = type x
       if x.locationData?
-        meta[ id ] ?= {}
-        meta[ id ].location = x.locationData
+        @context[ @id ] ?= {}
+        @context[ @id ].location = x.locationData
         delete x.locationData
       for own k,v of x
         delete x[ k ] if Array.isArray(v) and v.length is 0
-    [ node, meta ]
 
-module.exports = astwalk
+module.exports = ( node ) ->
+  new Walk node
 

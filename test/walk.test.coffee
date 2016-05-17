@@ -3,40 +3,75 @@ coffee = require 'coffee-script'
 astwalk = require '../index'
 fs = require 'fs'
 path = require 'path'
+stringify = require 'json-stringify-safe'
 
 file = ( f ) -> fs.readFileSync path.join(__dirname,
-  'fixtures', "#{f}.coffee"), "utf8"
-log = ( s ) -> console.log JSON.stringify s, null, 2
+  'fixtures', "#{f}.coffee"), 'utf8'
+log = ( s ) -> console.log stringify s, null, 2
 nodes = ( src ) -> coffee.nodes src
-cleanup = ( src ) -> astwalk(nodes src).cleanup()
-findByType = ( src, type ) -> astwalk(nodes src).findByType type
-reduce = ( src, init, fn ) -> astwalk(nodes src).reduce init, fn
-walk = ( src, fn ) -> astwalk(nodes src).walk fn
+
+source = undefined
+walk = undefined
 
 describe 'astwalk', ->
 
-  it 'should walk empty source', ( done ) ->
-    root = walk '', ->
-    root.expressions.length.should.equal 0
-    done()
+  describe 'empty source file', ->
+    beforeEach ->
+      source = ''
+      walk = astwalk nodes source
 
-  it 'one AST node for empty source', ( done ) ->
-    val = reduce '', 0, ( x, acc ) ->
-      if @isAstNode then acc + 1 else acc
-    val.should.equal 1
-    done()
+    it 'walk', ( done ) ->
+      root = walk.walk ( x ) -> x
+      walk.node.expressions.length.should.equal 0
+      # we're returning the original node
+      walk.node.should.equal root
+      done()
 
-  it 'should walk simple source', ( done ) ->
-    walk 'a=0', ->
-    done()
+    it 'add meta info', ( done ) ->
+      walk.meta()
+      should(walk.node.__id).exist
+      done()
 
-  it 'make the ast more readable / cleanup', ( done ) ->
-    val = cleanup file 'TestClass'
-    log val[0]
-    done()
+    it 'cleanup', ( done ) ->
+      walk.cleanup()
+      should(walk.node.expressions).not.exist
+      done()
 
-  it 'Find by type', ( done ) ->
-    val = findByType file('TestClass'), 'Assign'
-    log val.length
-    done()
+    it 'has only one AST node', ( done ) ->
+      val = walk.reduce 0, ( x, acc ) ->
+        if @isAstNode then acc + 1 else acc
+      val.should.equal 1
+      done()
+
+  describe 'a simple class', ->
+    beforeEach ->
+      source = file 'TestClass'
+      walk = astwalk nodes source
+
+    it 'add meta info', ( done ) ->
+      walk.meta()
+      should(walk.node.__id).exist
+      done()
+
+    it 'make the ast more readable / cleanup', ( done ) ->
+      walk.cleanup()
+      should(walk.node.__id).exist
+      done()
+
+    it 'Find by type', ( done ) ->
+      val = walk.findByType 'Assign'
+      val.length.should.equal 8
+      done()
+
+    it 'find first class node', ( done ) ->
+      val = walk.findFirstByType 'Class'
+      val.__type.should.equal 'Class'
+      done()
+
+    it 'find root of class node', ( done ) ->
+      klass = walk.findFirstByType 'Class'
+      root = astwalk(klass).findParent ( x ) -> x.__type is 'Assign'
+      root.__type.should.equal 'Assign'
+      done()
+
 
