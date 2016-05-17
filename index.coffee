@@ -1,1 +1,1 @@
-module.exports = require './lib/coffee-ast-walk'
+module.exports = require './lib/Walk'
