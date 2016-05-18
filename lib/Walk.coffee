@@ -5,7 +5,7 @@ isCSNode = ( n ) -> n?.compile?
 class NodeVisitor
   constructor : ( @opts ) ->
     @path = @opts.path
-    @depth = @path.length is 0
+    @depth = @path.length
     @isRoot = @depth is 0
     @id = @path[ -1.. ][ 0 ]
     @isAstNode = isCSNode @opts.node
@@ -14,6 +14,7 @@ class NodeVisitor
       @parent = @opts.parent
     @context = @opts.context
     @isLeaf = !_.isObjectLike @opts.node
+    @prev = @opts.prev
 
   visit : =>
     @opts.visitor.call @, @opts.node
@@ -29,23 +30,37 @@ class Walk
     return unless opts?.node or opts?.abort
     node = opts.node
     opts.path ?= []
+    opts.maxDepth ?= -1
     opts.context ?= {}
     opts.path.push opts.id if opts.id
+    depth = opts.path.length
 
-    if _.isObjectLike node
-      for own attr, ret of node when ret
-        if Array.isArray ret
-          for child, i in ret
-            o = _.assign {}, opts,
-              node : child,
-              parent : node
-              id : "#{attr}[#{i}]"
-            @_walk o
-        else if attr.indexOf('__') isnt 0
+    checkDepth =
+      opts.maxDepth < 0 or
+        (opts.maxDepth >= 0 and depth < opts.maxDepth)
+
+    if _.isObjectLike(node) and checkDepth
+      prev = undefined
+      for own attr, val of node when val
+        #if Array.isArray val
+        #  p = undefined
+        #  prev = for child, i in val
+        #    o = _.assign {}, opts,
+        #      node : child
+        #      prev : p
+        #      parent : node
+        #      id : "#{attr}[#{i}]"
+        #    o.path = _.cloneDeep o.path
+        #    p = child
+        #    @_walk o
+        if attr.indexOf('__') != 0 and attr != 'objects'
           o = _.assign {}, opts,
-            node : ret,
+            node : val
+            prev : prev
             parent : node
             id : attr
+          o.path = _.cloneDeep o.path
+          prev = val
           @_walk o
 
     new NodeVisitor(opts).visit()
@@ -54,6 +69,18 @@ class Walk
     [visitor, context] = [ context, visitor ] unless visitor
     throw new Error 'Missing argument: visitor' unless visitor?
     @_walk node : @node, visitor : visitor, context : context
+
+  walkToDepth : ( context, depth, visitor ) ->
+    if !depth and !visitor
+      visitor = context
+    else if !visitor
+      [visitor, depth] = [ depth, context ]
+    throw new Error 'Missing argument: visitor' unless visitor?
+    @_walk
+      node : @node,
+      visitor : visitor,
+      context : context,
+      maxDepth : depth
 
   meta : =>
     return if @node.__type?
@@ -64,18 +91,30 @@ class Walk
       x.__parent = @parent
       x
 
-  findByType : ( t ) =>
-    @walk [], ( x ) ->
-      @context.push x if type(x) is t
-      @context
+  findAll : ( depth, f ) =>
+    [f, depth] = [ depth, f ] unless f?
+    items = []
+    @walkToDepth items, depth, ( x ) ->
+      @context.push x if f.call @, x
+    items
 
-  findFirstByType : ( t ) =>
+  findFirst : ( depth, f ) =>
+    [f, depth] = [ depth, f ] unless f?
     item = undefined
-    @walk ( x ) ->
-      if type(x) is t and !item
+    @walkToDepth [], depth, ( x ) ->
+      if  !item and f.call @, x
         item = x
         @abort()
     item
+
+  findByType : ( t, depth ) =>
+    args = []
+    args.push depth if depth?
+    args.push ( x ) -> x.__type is t
+    @findAll.apply @, args
+
+  findFirstByType : ( t, depth ) =>
+    @findFirst depth, ( x ) -> x.__type is t
 
   reduce : ( acc, f ) =>
     [f, acc] = [ acc, f ] unless f?

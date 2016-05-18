@@ -60,7 +60,7 @@ describe 'astwalk', ->
 
     it 'Find by type', ( done ) ->
       val = walk.findByType 'Assign'
-      val.length.should.equal 8
+      val.length.should.equal 5
       done()
 
     it 'find first class node', ( done ) ->
@@ -72,6 +72,18 @@ describe 'astwalk', ->
       klass = walk.findFirstByType 'Class'
       root = astwalk(klass).findParent ( x ) -> x.__type is 'Assign'
       root.__type.should.equal 'Assign'
+      done()
+
+    it 'prev node', ( done ) ->
+      walk.walk ( x ) ->
+        return unless @isAstNode
+        console.log x.__type, @prev?.__type
+      done()
+
+    it 'path', ( done ) ->
+      walk.findAll ( x ) ->
+        console.log @path
+        true
       done()
 
 
