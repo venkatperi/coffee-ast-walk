@@ -13,6 +13,8 @@ module.exports = class Example.Animal
   ###
   @ANSWER = 42
 
+  @create: ->
+
   ###
   # @property [Array<String>] the nicknames
   ###
@@ -24,7 +26,7 @@ module.exports = class Example.Animal
   @param [String] name the name of the animal
   @param [Date] birthDate when the animal was born
   ###
-  constructor : ( @name, @birthDate = new Date() ) ->
+  constructor : ( @type, @name, @birthDate = new Date() ) ->
 
     ###
      Move the animal.
@@ -38,3 +40,11 @@ module.exports = class Example.Animal
      @public
     ###
   move : ( options = {} ) ->
+
+class Tiger extends Example.Animal
+  constructor : ( {@striped}, abc )->
+    super 'Tiger'
+
+module.exports = Tiger
+
+

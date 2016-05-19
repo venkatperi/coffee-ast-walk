@@ -50,6 +50,10 @@ klass = walk.findFirstByType 'Class'
 astwalk(klass).findParent ( x ) -> x.__type is 'Assign'
 ```
 
+# AST Node Meta Information
+
+`astwalk` adds a property `meta` to `Base` which is the base class for Coffeescript AST node classes. `meta` provides meta-information about the node and in many cases, it rolls up information from child nodes which can ease navigation and maipulation of the AST. See API for more details on the `meta` object.
+
 # API
 
 ## Create Walker
@@ -103,9 +107,37 @@ Returns the closest ancestor with the given type.
 
 Walks up the ancestor list and invokes the given callback **f** .
 
-### cleanup()
+## Meta Object
 
-Reduces clutter in the  AST.
+`node.meta` is a custom property is added to Coffeescript AST nodes. The following properties are available on all meta objects:
 
-* Remove empty arrays
-* Move locationData to `walk.meta` which can be accessed with the node's `__id` property.
+* `@node` The original AST node.
+* `@path` The `path` to the current node as an array of strings.
+* `@depth` The depth of the current node.
+* `@isRoot` True if the node is the root node.
+* `@isLeaf` True of the node is a leaf node.
+* `@id` A unique id assigned to each id. Not the same as the `id` available during a walk. Same as `node.__id`.
+* `@isAstNode` True if the node is a coffeescript AST node, or a scalar (string etc).
+* `@parent` The node's parent (undefined for root node).
+
+
+In addition, the following context-sensitive (i.e. node type) properties are available on `node.meta`:
+
+* `name`
+
+  * for `Class`, the class name.
+  * for `Assign`, the `lhs` of the assignment operator.
+  * for `Param`, the parameter name
+* `value`
+
+  * for `Comment`, the comment string
+  * for  `Param`, the param's value
+  * for `Assign`, the `rhs` of the assignment
+  * for `Literal`, the value of the literal
+  * for `Access`, the qualified name (e.g. `module.exports`)
+  * for `Value`, the value
+* `logicalItem` - for `Assign` nodes, returns the `rhs` of the assignment since it the logical basis for interpreting the `Assign` node sub-tree.
+* `superClass` the name of the class' super class, if any
+* `classMembers`, for classes, returns an object with `static` and `instance` members. Members which are methods also include parameter information.
+* `methodParams` returns an array or parameters for methods.
+
