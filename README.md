@@ -57,19 +57,21 @@ astwalk(klass).findParent ( x ) -> x.__type is 'Assign'
 # API
 
 ## Create Walker
-### astwalk(node)
+### astwalk(node[, init])
 
-Returns a walker. `astwalk` performs an initial walk over the AST tree and appends meta information to each AST node:
+Returns a walker. `astwalk` . Setting **init** will perform an initial walk over the AST tree and append a meta object as well as two properties to each AST node:
 
 * `__id` A unique id (monotonically increasing count).
 * `__type` The type of AST node (`node.constructor.name`)
-* `__parent` The node's parent (undefined for the root node).
 
 ## Methods
 
 ### walk([context, ] visitor)
 
-Walk's the AST tree and invokes the visitor for each node. Context is an optional `{Object}` which is available to the visitor callback.
+### walkToDepth([context, ] \[depth, ] visitor)
+
+Walk's the AST tree and invokes the **visitor** for each node. **Context** is an optional `{Object}` which is available to the visitor callback. Providing **depth** will limit the walk up to `depth` nodes from the current node (i.e. relative to the current node).
+
 #### About the Visitor: visitor(node)
 The current node is passed ot the visitor. Additionaly, the following properties are available in the `this` context of the visitor callback:
 * `@path` The `path` to the current node as an array of strings.
@@ -83,13 +85,23 @@ The current node is passed ot the visitor. Additionaly, the following properties
 
 The visitor callback can invoke `@abort()` to terminate the walk early.
 
-### findByType(type)
+**Return Value:** If a visitor returns an `{Object}`, the values from visiting the current AST node's child nodes are added to the object with the same key names as the original node. This can be viewed as a mapping operation on the AST tree (see example at the end). 
 
-Returns a list of nodes with the given `{String}` type.
+### findAll([depth, ] f(node))
 
-### findFirstByType(type)
+Returns all nodes (unto to optional **depth**) that satisfy the callback **f**.
 
-Returns the first node with the given `{String}` type.
+### findFirst([depth, ] f(node)
+
+Returns the first node (limited by **depth**) that matches the callback **f**.
+
+### findByType(type[, depth])
+
+Returns a list of nodes with the given `{String}` type, up to optional **depth**.
+
+### findFirstByType(type[, depth])
+
+Returns the first node with the given `{String}` type, up to optional **depth**.
 
 ### reduce([initial,] f)
 
@@ -140,4 +152,422 @@ In addition, the following context-sensitive (i.e. node type) properties are ava
 * `superClass` the name of the class' super class, if any
 * `classMembers`, for classes, returns an object with `static` and `instance` members. Members which are methods also include parameter information.
 * `methodParams` returns an array or parameters for methods.
+
+
+# Example - AST Tree View
+
+Map the AST tree to a human readable JSON object and use the `treeify` module to display it as a tree.
+
+```coffeescript
+walk = astwalk(ast, true)
+res = walk.walk ( x ) ->
+  o = {}
+  for t in [ 'type', 'name', 'value' ]
+    v = x.meta?[ t ]
+    o[ t ] = v if v and !_.isObjectLike v      
+  o
+
+  console.log treeify.asTree res, true
+```
+
+Let's apply it to this coffeescript:
+
+```coffeescript
+###
+# Base class for all animals.
+#
+# @example How to subclass an animal
+#   class Lion extends Animal
+#     move: (direction, speed): ->
+#
+###
+module.exports = class Example.Animal
+
+  ###
+  # The Answer to the Ultimate Question of Life, the Universe, and Everything
+  ###
+  @ANSWER = 42
+
+  @create: ->
+
+  ###
+  # @property [Array<String>] the nicknames
+  ###
+  nicknames : []
+
+  ###
+  Construct a new animal.
+
+  @param [String] name the name of the animal
+  @param [Date] birthDate when the animal was born
+  ###
+  constructor : ( @type, @name, @birthDate = new Date() ) ->
+
+    ###
+     Move the animal.
+
+     @example Move an animal
+       new Lion('Simba').move('south', 12)
+
+     @param [Object] options the moving options
+     @option options [String] direction the moving direction
+     @option options [Number] speed the speed in mph
+     @public
+    ###
+  move : ( options = {} ) ->
+
+class Tiger extends Example.Animal
+  constructor : ( {@striped}, abc )->
+    super 'Tiger'
+
+module.exports = Tiger
+```
+
+And the tree view:
+
+```shell
+├─ type: Block
+└─ expressions
+   ├─ 0
+   │  ├─ type: Comment
+   │  └─ value: 
+# Base class for all animals.
+#
+# @example How to subclass an animal
+#   class Lion extends Animal
+#     move: (direction, speed): ->
+#
+
+   ├─ 1
+   │  ├─ type: Assign
+   │  ├─ name: module.exports
+   │  ├─ variable
+   │  │  ├─ type: Value
+   │  │  ├─ value: module.exports
+   │  │  ├─ base
+   │  │  │  ├─ type: Literal
+   │  │  │  └─ value: module
+   │  │  └─ properties
+   │  │     └─ 0
+   │  │        ├─ type: Access
+   │  │        ├─ value: .exports
+   │  │        └─ name
+   │  │           ├─ type: Literal
+   │  │           └─ value: exports
+   │  └─ value
+   │     ├─ type: Class
+   │     ├─ name: Example.Animal
+   │     ├─ variable
+   │     │  ├─ type: Value
+   │     │  ├─ value: Example.Animal
+   │     │  ├─ base
+   │     │  │  ├─ type: Literal
+   │     │  │  └─ value: Example
+   │     │  └─ properties
+   │     │     └─ 0
+   │     │        ├─ type: Access
+   │     │        ├─ value: .Animal
+   │     │        └─ name
+   │     │           ├─ type: Literal
+   │     │           └─ value: Animal
+   │     └─ body
+   │        ├─ type: Block
+   │        └─ expressions
+   │           ├─ 0
+   │           │  ├─ type: Comment
+   │           │  └─ value: 
+# The Answer to the Ultimate Question of Life, the Universe, and Everything
+
+   │           ├─ 1
+   │           │  ├─ type: Assign
+   │           │  ├─ name: this.ANSWER
+   │           │  ├─ value
+   │           │  │  ├─ type: Value
+   │           │  │  ├─ value: 42
+   │           │  │  └─ base
+   │           │  │     ├─ type: Literal
+   │           │  │     └─ value: 42
+   │           │  └─ variable
+   │           │     ├─ type: Value
+   │           │     ├─ value: this.ANSWER
+   │           │     ├─ base
+   │           │     │  ├─ type: Literal
+   │           │     │  └─ value: this
+   │           │     └─ properties
+   │           │        └─ 0
+   │           │           ├─ type: Access
+   │           │           ├─ value: .ANSWER
+   │           │           └─ name
+   │           │              ├─ type: Literal
+   │           │              └─ value: ANSWER
+   │           └─ 2
+   │              ├─ type: Value
+   │              └─ base
+   │                 ├─ type: Obj
+   │                 └─ properties
+   │                    ├─ 0
+   │                    │  ├─ type: Assign
+   │                    │  ├─ name: this.create
+   │                    │  ├─ variable
+   │                    │  │  ├─ type: Value
+   │                    │  │  ├─ value: this.create
+   │                    │  │  ├─ base
+   │                    │  │  │  ├─ type: Literal
+   │                    │  │  │  └─ value: this
+   │                    │  │  └─ properties
+   │                    │  │     └─ 0
+   │                    │  │        ├─ type: Access
+   │                    │  │        ├─ value: .create
+   │                    │  │        └─ name
+   │                    │  │           ├─ type: Literal
+   │                    │  │           └─ value: create
+   │                    │  ├─ value
+   │                    │  │  ├─ type: Code
+   │                    │  │  └─ body
+   │                    │  │     └─ type: Block
+   │                    │  └─ operatorToken
+   │                    │     ├─ type: Literal
+   │                    │     └─ value: :
+   │                    ├─ 1
+   │                    │  ├─ type: Comment
+   │                    │  └─ value: 
+# @property [Array<String>] the nicknames
+
+   │                    ├─ 2
+   │                    │  ├─ type: Assign
+   │                    │  ├─ name: nicknames
+   │                    │  ├─ variable
+   │                    │  │  ├─ type: Value
+   │                    │  │  ├─ value: nicknames
+   │                    │  │  └─ base
+   │                    │  │     ├─ type: Literal
+   │                    │  │     └─ value: nicknames
+   │                    │  ├─ value
+   │                    │  │  ├─ type: Value
+   │                    │  │  └─ base
+   │                    │  │     └─ type: Arr
+   │                    │  └─ operatorToken
+   │                    │     ├─ type: Literal
+   │                    │     └─ value: :
+   │                    ├─ 3
+   │                    │  ├─ type: Comment
+   │                    │  └─ value: 
+Construct a new animal.
+
+@param [String] name the name of the animal
+@param [Date] birthDate when the animal was born
+
+   │                    ├─ 4
+   │                    │  ├─ type: Assign
+   │                    │  ├─ name: constructor
+   │                    │  ├─ variable
+   │                    │  │  ├─ type: Value
+   │                    │  │  ├─ value: constructor
+   │                    │  │  └─ base
+   │                    │  │     ├─ type: Literal
+   │                    │  │     └─ value: constructor
+   │                    │  ├─ value
+   │                    │  │  ├─ type: Code
+   │                    │  │  ├─ params
+   │                    │  │  │  ├─ 0
+   │                    │  │  │  │  ├─ type: Param
+   │                    │  │  │  │  └─ name
+   │                    │  │  │  │     ├─ type: Value
+   │                    │  │  │  │     ├─ value: this.type
+   │                    │  │  │  │     ├─ base
+   │                    │  │  │  │     │  ├─ type: Literal
+   │                    │  │  │  │     │  └─ value: this
+   │                    │  │  │  │     └─ properties
+   │                    │  │  │  │        └─ 0
+   │                    │  │  │  │           ├─ type: Access
+   │                    │  │  │  │           ├─ value: .type
+   │                    │  │  │  │           └─ name
+   │                    │  │  │  │              ├─ type: Literal
+   │                    │  │  │  │              └─ value: type
+   │                    │  │  │  ├─ 1
+   │                    │  │  │  │  ├─ type: Param
+   │                    │  │  │  │  └─ name
+   │                    │  │  │  │     ├─ type: Value
+   │                    │  │  │  │     ├─ value: this.name
+   │                    │  │  │  │     ├─ base
+   │                    │  │  │  │     │  ├─ type: Literal
+   │                    │  │  │  │     │  └─ value: this
+   │                    │  │  │  │     └─ properties
+   │                    │  │  │  │        └─ 0
+   │                    │  │  │  │           ├─ type: Access
+   │                    │  │  │  │           ├─ value: .name
+   │                    │  │  │  │           └─ name
+   │                    │  │  │  │              ├─ type: Literal
+   │                    │  │  │  │              └─ value: name
+   │                    │  │  │  └─ 2
+   │                    │  │  │     ├─ type: Param
+   │                    │  │  │     ├─ name
+   │                    │  │  │     │  ├─ type: Value
+   │                    │  │  │     │  ├─ value: this.birthDate
+   │                    │  │  │     │  ├─ base
+   │                    │  │  │     │  │  ├─ type: Literal
+   │                    │  │  │     │  │  └─ value: this
+   │                    │  │  │     │  └─ properties
+   │                    │  │  │     │     └─ 0
+   │                    │  │  │     │        ├─ type: Access
+   │                    │  │  │     │        ├─ value: .birthDate
+   │                    │  │  │     │        └─ name
+   │                    │  │  │     │           ├─ type: Literal
+   │                    │  │  │     │           └─ value: birthDate
+   │                    │  │  │     └─ value
+   │                    │  │  │        ├─ type: Call
+   │                    │  │  │        └─ variable
+   │                    │  │  │           ├─ type: Value
+   │                    │  │  │           ├─ value: Date
+   │                    │  │  │           └─ base
+   │                    │  │  │              ├─ type: Literal
+   │                    │  │  │              └─ value: Date
+   │                    │  │  └─ body
+   │                    │  │     ├─ type: Block
+   │                    │  │     └─ expressions
+   │                    │  │        └─ 0
+   │                    │  │           ├─ type: Comment
+   │                    │  │           └─ value: 
+ Move the animal.
+
+ @example Move an animal
+   new Lion('Simba').move('south', 12)
+
+ @param [Object] options the moving options
+ @option options [String] direction the moving direction
+ @option options [Number] speed the speed in mph
+ @public
+
+   │                    │  └─ operatorToken
+   │                    │     ├─ type: Literal
+   │                    │     └─ value: :
+   │                    └─ 5
+   │                       ├─ type: Assign
+   │                       ├─ name: move
+   │                       ├─ variable
+   │                       │  ├─ type: Value
+   │                       │  ├─ value: move
+   │                       │  └─ base
+   │                       │     ├─ type: Literal
+   │                       │     └─ value: move
+   │                       ├─ value
+   │                       │  ├─ type: Code
+   │                       │  ├─ params
+   │                       │  │  └─ 0
+   │                       │  │     ├─ type: Param
+   │                       │  │     ├─ name
+   │                       │  │     │  ├─ type: Literal
+   │                       │  │     │  └─ value: options
+   │                       │  │     └─ value
+   │                       │  │        ├─ type: Value
+   │                       │  │        └─ base
+   │                       │  │           └─ type: Obj
+   │                       │  └─ body
+   │                       │     └─ type: Block
+   │                       └─ operatorToken
+   │                          ├─ type: Literal
+   │                          └─ value: :
+   ├─ 2
+   │  ├─ type: Class
+   │  ├─ name: Tiger
+   │  ├─ variable
+   │  │  ├─ type: Value
+   │  │  ├─ value: Tiger
+   │  │  └─ base
+   │  │     ├─ type: Literal
+   │  │     └─ value: Tiger
+   │  ├─ parent
+   │  │  ├─ type: Value
+   │  │  ├─ value: Example.Animal
+   │  │  ├─ base
+   │  │  │  ├─ type: Literal
+   │  │  │  └─ value: Example
+   │  │  └─ properties
+   │  │     └─ 0
+   │  │        ├─ type: Access
+   │  │        ├─ value: .Animal
+   │  │        └─ name
+   │  │           ├─ type: Literal
+   │  │           └─ value: Animal
+   │  └─ body
+   │     ├─ type: Block
+   │     └─ expressions
+   │        └─ 0
+   │           ├─ type: Value
+   │           └─ base
+   │              ├─ type: Obj
+   │              └─ properties
+   │                 └─ 0
+   │                    ├─ type: Assign
+   │                    ├─ name: constructor
+   │                    ├─ variable
+   │                    │  ├─ type: Value
+   │                    │  ├─ value: constructor
+   │                    │  └─ base
+   │                    │     ├─ type: Literal
+   │                    │     └─ value: constructor
+   │                    ├─ value
+   │                    │  ├─ type: Code
+   │                    │  ├─ params
+   │                    │  │  ├─ 0
+   │                    │  │  │  ├─ type: Param
+   │                    │  │  │  └─ name
+   │                    │  │  │     ├─ type: Obj
+   │                    │  │  │     └─ properties
+   │                    │  │  │        └─ 0
+   │                    │  │  │           ├─ type: Value
+   │                    │  │  │           ├─ value: this.striped
+   │                    │  │  │           ├─ base
+   │                    │  │  │           │  ├─ type: Literal
+   │                    │  │  │           │  └─ value: this
+   │                    │  │  │           └─ properties
+   │                    │  │  │              └─ 0
+   │                    │  │  │                 ├─ type: Access
+   │                    │  │  │                 ├─ value: .striped
+   │                    │  │  │                 └─ name
+   │                    │  │  │                    ├─ type: Literal
+   │                    │  │  │                    └─ value: striped
+   │                    │  │  └─ 1
+   │                    │  │     ├─ type: Param
+   │                    │  │     └─ name
+   │                    │  │        ├─ type: Literal
+   │                    │  │        └─ value: abc
+   │                    │  └─ body
+   │                    │     ├─ type: Block
+   │                    │     └─ expressions
+   │                    │        └─ 0
+   │                    │           ├─ type: Call
+   │                    │           └─ args
+   │                    │              └─ 0
+   │                    │                 ├─ type: Value
+   │                    │                 ├─ value: 'Tiger'
+   │                    │                 └─ base
+   │                    │                    ├─ type: Literal
+   │                    │                    └─ value: 'Tiger'
+   │                    └─ operatorToken
+   │                       ├─ type: Literal
+   │                       └─ value: :
+   └─ 3
+      ├─ type: Assign
+      ├─ name: module.exports
+      ├─ value
+      │  ├─ type: Value
+      │  ├─ value: Tiger
+      │  └─ base
+      │     ├─ type: Literal
+      │     └─ value: Tiger
+      └─ variable
+         ├─ type: Value
+         ├─ value: module.exports
+         ├─ base
+         │  ├─ type: Literal
+         │  └─ value: module
+         └─ properties
+            └─ 0
+               ├─ type: Access
+               ├─ value: .exports
+               └─ name
+                  ├─ type: Literal
+                  └─ value: exports
+```
 

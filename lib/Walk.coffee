@@ -1,139 +1,11 @@
 _ = require 'lodash'
-
-type = ( node ) -> node?.type or node.constructor.name
-isCSNode = ( n ) -> n?.compile?
-
-class Meta
-  constructor : ( {@node, @path, @type, @parent, @prev} ) ->
-    @locationData = @node.locationData
-    @depth = @path.length
-    @isRoot = @depth is 0
-    @id = @path[ -1.. ][ 0 ]
-    @isAstNode = isCSNode @node
-    @isLeaf = !_.isObjectLike @node
-
-  Object.defineProperty @prototype, 'name',
-    get : ->
-      unless @_name?
-        switch @type
-          when 'Param'
-            if @node.name.meta.type is 'Obj'
-              @_name = @node.name.meta.objectKeys
-            else
-              @_name = @node.name?.meta.value
-          when 'Assign'
-            @_name = @node.variable?.meta.value
-          when 'Class'
-            @_name = @node.variable?.meta.value
-          else
-            @_name = undefined # no default name
-      @_name
-
-  Object.defineProperty @prototype, 'value',
-    get : ->
-      unless @_value
-        switch @type
-          when 'Comment'
-            @_value = @node.comment
-          when 'Param'
-            @_value = @node.value?.meta.value
-          when 'Assign'
-            @_value = @node.value?.meta.value
-            if @_value.meta?.type is 'Code'
-              @isMethod = true
-          when 'Literal'
-            @_value = @node.value
-          when 'Access'
-            @_value = ".#{@node.name.meta.value}"
-          when 'Value'
-            @_value = @node.base?.meta.value
-            x = @node.properties?[ 0 ]?.meta.value
-            @_value += x if x
-          else
-            @_value = @node # default value is the node
-      @_value
-
-  Object.defineProperty @prototype, 'objectKeys',
-    get : ->
-      unless @_objectKeys
-        switch @type
-          when 'Obj'
-            @_objectKeys = for p in @node.properties
-              p.meta.value
-      @_objectKeys
-
-  Object.defineProperty @prototype, 'logicalItem',
-    get : ->
-      unless @_logicalItem
-        switch @type
-          when 'Assign'
-            @_logicalItem = @node.value
-          else
-            @_logicalItem = @node
-      @_logicalItem
-
-  Object.defineProperty @prototype, 'superClass',
-    get : ->
-      unless @_superClass
-        switch @type
-          when 'Class'
-            @_superClass = @node.parent?.meta.value
-      @_superClass
-
-  Object.defineProperty @prototype, 'classMembers',
-    get : ->
-      unless @_classMembers
-        body = astwalk(@node).findFirst 1, ( x ) ->
-          x.__type is 'Block' and x.classBody
-        @_classMembers = members = static : [], instance : []
-        for e in body.expressions
-          if e.meta.type is 'Value' and e.meta.value?.meta.type is 'Obj'
-            for m in e.meta.value.properties
-              if m.meta.name?.indexOf('this.') is 0
-                members.static.push m
-              else
-                members.instance.push m
-          else
-            members.static.push e
-
-        for t in [ 'static', 'instance' ]
-          # need this below, donno why
-          [ m.meta.name, m.meta.value ] for m in members[ t ]
-          for m in members[ t ] when m.meta.name
-            names = m.meta.name.split '.'
-            lastName = names[ names.length - 1 ]
-            vis = if lastName[ 0 ] is '_' then 'private' else 'public'
-            m.meta.visibility = vis
-
-      @_classMembers
-
-  Object.defineProperty @prototype, 'methodParams',
-    get : ->
-      unless @_methodParams
-        @_methodParams = @node.params
-      @_methodParams
-
-class NodeVisitor
-  constructor : ( @opts ) ->
-    @path = @opts.path
-    @depth = @path.length
-    @isRoot = @depth is 0
-    @id = @path[ -1.. ][ 0 ]
-    @isAstNode = isCSNode @opts.node
-    if @isAstNode
-      @type = type @opts.node
-      @parent = @opts.parent
-      @prev = @opts.prev
-    @context = @opts.context
-    @isLeaf = !_.isObjectLike @opts.node
-
-  visit : => @opts.visitor.call @, @opts.node
-
-  abort : => @opts.abort = true
+Meta = require './Meta'
+NodeVisitor = require './NodeVisitor'
+{type, isCSNode} = require './helpers'
 
 class Walk
 
-  Object.defineProperty @prototype, 'topLevel',
+  @property 'topLevel',
     get : -> @data.topLevel
 
   constructor : ( @node, init ) ->
@@ -156,6 +28,8 @@ class Walk
     opts.path ?= []
     opts.maxDepth ?= -1
     opts.context ?= {}
+    opts.ignore ?= ( x ) -> x.indexOf('__') is 0 or
+      x in [ 'objects', 'locationData' ]
     opts.path.push opts.id if opts.id
     depth = opts.path.length
 
@@ -163,20 +37,26 @@ class Walk
       opts.maxDepth < 0 or
         (opts.maxDepth >= 0 and depth < opts.maxDepth)
 
+    res = new NodeVisitor(opts).visit()
+
+    cloneOpts = ( n, child, id, p ) ->
+      x = _.assign {}, opts,
+        { node : child, prev : p, parent : n, id : id }
+      x.path = _.cloneDeep opts.path
+      [ x, child ]
+
     if _.isObjectLike(node) and checkDepth
       prev = undefined
-      for own attr, val of node when val
-        if attr.indexOf('__') != 0 and attr != 'objects'
-          o = _.assign {}, opts,
-            node : val
-            prev : prev
-            parent : node
-            id : attr
-          o.path = _.cloneDeep o.path
-          prev = val
-          @_walk o
-
-    new NodeVisitor(opts).visit()
+      for own attr, val of node when !opts.ignore(attr)
+        if Array.isArray val
+          ret = for c,i in val
+            [o, prev] = cloneOpts node, c, "attr[#{i}]", prev
+            @_walk o
+        else
+          [o, prev] = cloneOpts node, val, attr, prev
+          ret = @_walk o
+        res[ attr ] = ret if _.isObjectLike(res) and !_.isEmpty(ret)
+    res
 
   walk : ( context, visitor ) ->
     [visitor, context] = [ context, visitor ] unless visitor
@@ -211,14 +91,15 @@ class Walk
         locationData : x.locationData
 
       # note the top level items
-      _data.topLevel.push x if @depth is 2
-      x
+      _data.topLevel.push x if @depth is 1
+      return undefined
 
   findAll : ( depth, f ) =>
     [f, depth] = [ depth, f ] unless f?
     items = []
     @walkToDepth items, depth, ( x ) ->
       @context.push x if f.call @, x
+      undefined
     items
 
   findFirst : ( depth, f ) =>
@@ -257,6 +138,6 @@ class Walk
     while (parent = parent.meta().parent)
       fn parent
 
-module.exports = astwalk = ( node, init ) ->
+module.exports = ( node, init ) ->
   new Walk node, init
 

@@ -1,15 +1,8 @@
 _ = require 'lodash'
 should = require 'should'
-coffee = require 'coffee-script'
 astwalk = require '../index'
-fs = require 'fs'
-path = require 'path'
-stringify = require 'json-stringify-safe'
-
-file = ( f ) -> fs.readFileSync path.join(__dirname,
-  'fixtures', "#{f}.coffee"), 'utf8'
-log = ( s ) -> console.log stringify s, null, 2
-nodes = ( src ) -> coffee.nodes src
+treeify = require 'treeify'
+{file, log, nodes} = require './ext/ext'
 
 source = undefined
 walk = undefined
@@ -22,10 +15,14 @@ describe 'astwalk', ->
       walk = astwalk nodes source
 
     it 'walk', ( done ) ->
-      root = walk.walk ( x ) -> x
       walk.node.expressions.length.should.equal 0
-      # we're returning the original node
-      walk.node.should.equal root
+      res = walk.walk ( x ) -> type : x.__type
+      res.type.should.equal 'Block'
+      done()
+
+    it 'walk', ( done ) ->
+      res = walk.walk ( x ) -> x.__type
+      res.should.equal 'Block'
       done()
 
     it 'has only one AST node', ( done ) ->
@@ -43,6 +40,7 @@ describe 'astwalk', ->
 
     it 'Find by type', ( done ) ->
       val = walk.findByType 'Assign'
+      log val
       val.length.should.equal 8
       done()
 
@@ -88,7 +86,19 @@ describe 'astwalk', ->
       top = walk.topLevel
       top.length.should.equal 4
       #log _.map top, ( x ) ->
-      #  [ x.meta.type, x.meta.logicalItem.meta?.type ]
+      #  [ x.meta.name or x.meta.value, x.meta.type,
+      #    x.meta.logicalItem.meta?.type ]
+      done()
+
+    it 'map', ( done ) ->
+      res = walk.walk ( x ) ->
+        o = {}
+        for t in [ 'type', 'name', 'value' ]
+          v = x.meta?[ t ]
+          o[ t ] = v if v and !_.isObjectLike v
+        o
+
+      console.log treeify.asTree res, true
       done()
 
 
