@@ -1,15 +1,17 @@
 _ = require 'lodash'
 Meta = require './Meta'
 NodeVisitor = require './NodeVisitor'
-{type, isCSNode} = require './helpers'
+{type} = require './helpers'
 
 class Walk
 
   @property 'topLevel',
     get : -> @data.topLevel
 
-  constructor : ( @node, init ) ->
+  constructor : ( @node, source, init ) ->
+    [init, source] = [ source, init ] unless typeof @source is 'boolean'
     @data =
+      source: source
       topLevel : []
       byId : {}
     @_addProperty() if init
@@ -29,7 +31,7 @@ class Walk
     opts.maxDepth ?= -1
     opts.context ?= {}
     opts.ignore ?= ( x ) -> x.indexOf('__') is 0 or
-      x in [ 'objects', 'locationData' ]
+      x in [ 'locationData' ]
     opts.path.push opts.id if opts.id
     depth = opts.path.length
 
@@ -37,31 +39,48 @@ class Walk
       opts.maxDepth < 0 or
         (opts.maxDepth >= 0 and depth < opts.maxDepth)
 
-    res = new NodeVisitor(opts).visit()
+    insert = ( obj, v, path ) ->
+      path = '__root__' unless path?
+      path = path.replace(']', '')
+      sep = if path.indexOf('[') then '[' else '.'
+      x = path.split(sep)
+      if x.length > 1
+        obj[ x[ 0 ] ] ?= if sep is '[' then [] else {}
+        obj = obj[ x[ 0 ] ]
+        x.shift()
+      obj[ x[ 0 ] ] = v
 
-    cloneOpts = ( n, child, id, p ) ->
+    nv = new NodeVisitor(opts)
+    res = nv.visit()
+    if res and opts.parentRes
+      insert opts.parentRes, res, nv.id
+
+    cloneOpts = ( n, child, id, p, r ) ->
       x = _.assign {}, opts,
-        { node : child, prev : p, parent : n, id : id }
+        { node : child, prev : p, parent : n, id : id, parentRes : r }
       x.path = _.cloneDeep opts.path
       [ x, child ]
 
     if _.isObjectLike(node) and checkDepth
       prev = undefined
-      for own attr, val of node when !opts.ignore(attr)
+      opts.block = false
+      for own attr, val of node when !opts.ignore(attr) and !opts.block
         if Array.isArray val
-          ret = for c,i in val
-            [o, prev] = cloneOpts node, c, "attr[#{i}]", prev
+          for c,i in val
+            [o, prev] = cloneOpts node, c, "#{attr}[#{i}]", prev, res
             @_walk o
         else
-          [o, prev] = cloneOpts node, val, attr, prev
-          ret = @_walk o
-        res[ attr ] = ret if _.isObjectLike(res) and !_.isEmpty(ret)
-    res
+          [o, prev] = cloneOpts node, val, attr, prev, res
+          @_walk o
+    #res[ attr ] = ret if _.isObjectLike(res) and !_.isEmpty(ret)
+    opts.parentRes or res
 
   walk : ( context, visitor ) ->
     [visitor, context] = [ context, visitor ] unless visitor
     throw new Error 'Missing argument: visitor' unless visitor?
-    @_walk node : @node, visitor : visitor, context : context
+    res = {}
+    @_walk node : @node, visitor : visitor, context : context, parentRes : res
+    res.__root__ or res
 
   walkToDepth : ( context, depth, visitor ) ->
     if !depth and !visitor
@@ -69,11 +88,14 @@ class Walk
     else if !visitor
       [visitor, depth] = [ depth, context ]
     throw new Error 'Missing argument: visitor' unless visitor?
+    res = {}
     @_walk
       node : @node,
       visitor : visitor,
       context : context,
       maxDepth : depth
+      parentRes : res
+    res.__root__ or res
 
   _processMeta : =>
     return if @node.__type?

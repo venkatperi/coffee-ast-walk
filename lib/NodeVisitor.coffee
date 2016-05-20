@@ -18,3 +18,4 @@ module.exports = class NodeVisitor
   visit : => @opts.visitor.call @, @opts.node
 
   abort : => @opts.abort = true
+  block : => @opts.block = true

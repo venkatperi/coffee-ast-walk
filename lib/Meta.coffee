@@ -1,9 +1,10 @@
 _ = require 'lodash'
+Location = require './Location'
 {isCSNode} = require './helpers'
 
 module.exports = class Meta
   constructor : ( {@node, @path, @type, @parent, @prev} ) ->
-    @locationData = @node.locationData
+    @location = new Location @node.locationData
     @depth = @path.length
     @isRoot = @depth is 0
     @id = @path[ -1.. ][ 0 ]

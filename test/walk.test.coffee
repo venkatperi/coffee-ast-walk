@@ -10,13 +10,15 @@ walk = undefined
 describe 'astwalk', ->
 
   describe 'empty source file', ->
-    beforeEach ->
+    before ->
       source = ''
-      walk = astwalk nodes source
+      walk = astwalk nodes(source)
 
     it 'walk', ( done ) ->
       walk.node.expressions.length.should.equal 0
-      res = walk.walk ( x ) -> type : x.__type
+      res = walk.walk ( x ) ->
+        type : x.__type
+      log res
       res.type.should.equal 'Block'
       done()
 
@@ -41,7 +43,7 @@ describe 'astwalk', ->
     it 'Find by type', ( done ) ->
       val = walk.findByType 'Assign'
       log val
-      val.length.should.equal 8
+      val.length.should.equal 13
       done()
 
     it 'find first class node', ( done ) ->
@@ -51,7 +53,9 @@ describe 'astwalk', ->
 
     it 'find root of class node', ( done ) ->
       klass = walk.findFirstByType 'Class'
+      console.log klass.meta.type
       root = astwalk(klass).findParent ( x ) -> x.__type is 'Assign'
+      log root
       root.__type.should.equal 'Assign'
       done()
 
