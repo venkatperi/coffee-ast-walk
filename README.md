@@ -24,14 +24,14 @@ walk = astwalk(root)
 ## Dump Every Node
 
 ```coffeescript
-walk.walk (x) -> 
-  console.log x  
+walk.walk (x) ->
+  console.log x
 ```
 
 ## AST Node Count
 
 ```coffeescript
-walk.reduce 0, (x, acc) -> 
+walk.reduce 0, (x, acc) ->
 	if @isAstNode then acc + 1 else acc
 ```
 
@@ -50,524 +50,213 @@ klass = walk.findFirstByType 'Class'
 astwalk(klass).findParent ( x ) -> x.__type is 'Assign'
 ```
 
-# AST Node Meta Information
 
-`astwalk` adds a property `meta` to `Base` which is the base class for Coffeescript AST node classes. `meta` provides meta-information about the node and in many cases, it rolls up information from child nodes which can ease navigation and maipulation of the AST. See API for more details on the `meta` object.
-
-# API
-
-## Create Walker
-### astwalk(node[, init])
-
-Returns a walker. `astwalk` . Setting **init** will perform an initial walk over the AST tree and append a meta object as well as two properties to each AST node:
-
-* `__id` A unique id (monotonically increasing count).
-* `__type` The type of AST node (`node.constructor.name`)
-
-## Methods
-
-### walk([context, ] visitor)
-
-### walkToDepth([context, ] \[depth, ] visitor)
-
-Walk's the AST tree and invokes the **visitor** for each node. **Context** is an optional `{Object}` which is available to the visitor callback. Providing **depth** will limit the walk up to `depth` nodes from the current node (i.e. relative to the current node).
-
-#### About the Visitor: visitor(node)
-The current node is passed ot the visitor. Additionaly, the following properties are available in the `this` context of the visitor callback:
-* `@path` The `path` to the current node as an array of strings.
-* `@depth` The depth of the current node.
-* `@isRoot` True if the node is the root node.
-* `@isLeaf` True of the node is a leaf node.
-* `@id` The `id` used to invoke the current node, also the last element of the path array.
-* `@isAstNode` True if the node is a coffeescript AST node, or a scalar (string etc).
-* `@context` An optional context, passed to walk.
-* `@parent` The node's parent (undefined for root node).
-
-The visitor callback can invoke `@abort()` to terminate the walk early.
-
-**Return Value:** If a visitor returns an `{Object}`, the values from visiting the current AST node's child nodes are added to the object with the same key names as the original node. This can be viewed as a mapping operation on the AST tree (see example at the end). 
-
-### findAll([depth, ] f(node))
-
-Returns all nodes (unto to optional **depth**) that satisfy the callback **f**.
-
-### findFirst([depth, ] f(node)
-
-Returns the first node (limited by **depth**) that matches the callback **f**.
-
-### findByType(type[, depth])
-
-Returns a list of nodes with the given `{String}` type, up to optional **depth**.
-
-### findFirstByType(type[, depth])
-
-Returns the first node with the given `{String}` type, up to optional **depth**.
-
-### reduce([initial,] f)
-
-Updates an internal **accumulator** to the value returned by `f(node, acc)` and returns the final value of acc. The accumulator is optionally set to **initial**.
-
-### findParent(pred)
-
-Returns the closes ancestor that satisfies the supplied predicate **pred**.
-
-### findParentByType(type)
-
-Returns the closest ancestor with the given type.
-
-### up(f)
-
-Walks up the ancestor list and invokes the given callback **f** .
-
-## Meta Object
-
-`node.meta` is a custom property is added to Coffeescript AST nodes. The following properties are available on all meta objects:
-
-* `@node` The original AST node.
-* `@path` The `path` to the current node as an array of strings.
-* `@depth` The depth of the current node.
-* `@isRoot` True if the node is the root node.
-* `@isLeaf` True of the node is a leaf node.
-* `@id` A unique id assigned to each id. Not the same as the `id` available during a walk. Same as `node.__id`.
-* `@isAstNode` True if the node is a coffeescript AST node, or a scalar (string etc).
-* `@parent` The node's parent (undefined for root node).
-
-
-In addition, the following context-sensitive (i.e. node type) properties are available on `node.meta`:
-
-* `name`
-
-  * for `Class`, the class name.
-  * for `Assign`, the `lhs` of the assignment operator.
-  * for `Param`, the parameter name
-* `value`
-
-  * for `Comment`, the comment string
-  * for  `Param`, the param's value
-  * for `Assign`, the `rhs` of the assignment
-  * for `Literal`, the value of the literal
-  * for `Access`, the qualified name (e.g. `module.exports`)
-  * for `Value`, the value
-* `logicalItem` - for `Assign` nodes, returns the `rhs` of the assignment since it the logical basis for interpreting the `Assign` node sub-tree.
-* `superClass` the name of the class' super class, if any
-* `classMembers`, for classes, returns an object with `static` and `instance` members. Members which are methods also include parameter information.
-* `methodParams` returns an array or parameters for methods.
-
-
-# Example - AST Tree View
-
-Map the AST tree to a human readable JSON object and use the `treeify` module to display it as a tree.
-
-```coffeescript
-walk = astwalk(ast, true)
-res = walk.walk ( x ) ->
-  o = {}
-  for t in [ 'type', 'name', 'value' ]
-    v = x.meta?[ t ]
-    o[ t ] = v if v and !_.isObjectLike v      
-  o
-
-  console.log treeify.asTree res, true
-```
-
-Let's apply it to this coffeescript:
-
-```coffeescript
-###
-# Base class for all animals.
-#
-# @example How to subclass an animal
-#   class Lion extends Animal
-#     move: (direction, speed): ->
-#
-###
-module.exports = class Example.Animal
-
-  ###
-  # The Answer to the Ultimate Question of Life, the Universe, and Everything
-  ###
-  @ANSWER = 42
-
-  @create: ->
-
-  ###
-  # @property [Array<String>] the nicknames
-  ###
-  nicknames : []
-
-  ###
-  Construct a new animal.
-
-  @param [String] name the name of the animal
-  @param [Date] birthDate when the animal was born
-  ###
-  constructor : ( @type, @name, @birthDate = new Date() ) ->
-
-    ###
-     Move the animal.
-
-     @example Move an animal
-       new Lion('Simba').move('south', 12)
-
-     @param [Object] options the moving options
-     @option options [String] direction the moving direction
-     @option options [Number] speed the speed in mph
-     @public
-    ###
-  move : ( options = {} ) ->
-
-class Tiger extends Example.Animal
-  constructor : ( {@striped}, abc )->
-    super 'Tiger'
-
-module.exports = Tiger
-```
-
-And the tree view:
-
-```shell
-├─ type: Block
-└─ expressions
-   ├─ 0
-   │  ├─ type: Comment
-   │  └─ value: 
-# Base class for all animals.
-#
-# @example How to subclass an animal
-#   class Lion extends Animal
-#     move: (direction, speed): ->
-#
-
-   ├─ 1
-   │  ├─ type: Assign
-   │  ├─ name: module.exports
-   │  ├─ variable
-   │  │  ├─ type: Value
-   │  │  ├─ value: module.exports
-   │  │  ├─ base
-   │  │  │  ├─ type: Literal
-   │  │  │  └─ value: module
-   │  │  └─ properties
-   │  │     └─ 0
-   │  │        ├─ type: Access
-   │  │        ├─ value: .exports
-   │  │        └─ name
-   │  │           ├─ type: Literal
-   │  │           └─ value: exports
-   │  └─ value
-   │     ├─ type: Class
-   │     ├─ name: Example.Animal
-   │     ├─ variable
-   │     │  ├─ type: Value
-   │     │  ├─ value: Example.Animal
-   │     │  ├─ base
-   │     │  │  ├─ type: Literal
-   │     │  │  └─ value: Example
-   │     │  └─ properties
-   │     │     └─ 0
-   │     │        ├─ type: Access
-   │     │        ├─ value: .Animal
-   │     │        └─ name
-   │     │           ├─ type: Literal
-   │     │           └─ value: Animal
-   │     └─ body
-   │        ├─ type: Block
-   │        └─ expressions
-   │           ├─ 0
-   │           │  ├─ type: Comment
-   │           │  └─ value: 
-# The Answer to the Ultimate Question of Life, the Universe, and Everything
-
-   │           ├─ 1
-   │           │  ├─ type: Assign
-   │           │  ├─ name: this.ANSWER
-   │           │  ├─ value
-   │           │  │  ├─ type: Value
-   │           │  │  ├─ value: 42
-   │           │  │  └─ base
-   │           │  │     ├─ type: Literal
-   │           │  │     └─ value: 42
-   │           │  └─ variable
-   │           │     ├─ type: Value
-   │           │     ├─ value: this.ANSWER
-   │           │     ├─ base
-   │           │     │  ├─ type: Literal
-   │           │     │  └─ value: this
-   │           │     └─ properties
-   │           │        └─ 0
-   │           │           ├─ type: Access
-   │           │           ├─ value: .ANSWER
-   │           │           └─ name
-   │           │              ├─ type: Literal
-   │           │              └─ value: ANSWER
-   │           └─ 2
-   │              ├─ type: Value
-   │              └─ base
-   │                 ├─ type: Obj
-   │                 └─ properties
-   │                    ├─ 0
-   │                    │  ├─ type: Assign
-   │                    │  ├─ name: this.create
-   │                    │  ├─ variable
-   │                    │  │  ├─ type: Value
-   │                    │  │  ├─ value: this.create
-   │                    │  │  ├─ base
-   │                    │  │  │  ├─ type: Literal
-   │                    │  │  │  └─ value: this
-   │                    │  │  └─ properties
-   │                    │  │     └─ 0
-   │                    │  │        ├─ type: Access
-   │                    │  │        ├─ value: .create
-   │                    │  │        └─ name
-   │                    │  │           ├─ type: Literal
-   │                    │  │           └─ value: create
-   │                    │  ├─ value
-   │                    │  │  ├─ type: Code
-   │                    │  │  └─ body
-   │                    │  │     └─ type: Block
-   │                    │  └─ operatorToken
-   │                    │     ├─ type: Literal
-   │                    │     └─ value: :
-   │                    ├─ 1
-   │                    │  ├─ type: Comment
-   │                    │  └─ value: 
-# @property [Array<String>] the nicknames
-
-   │                    ├─ 2
-   │                    │  ├─ type: Assign
-   │                    │  ├─ name: nicknames
-   │                    │  ├─ variable
-   │                    │  │  ├─ type: Value
-   │                    │  │  ├─ value: nicknames
-   │                    │  │  └─ base
-   │                    │  │     ├─ type: Literal
-   │                    │  │     └─ value: nicknames
-   │                    │  ├─ value
-   │                    │  │  ├─ type: Value
-   │                    │  │  └─ base
-   │                    │  │     └─ type: Arr
-   │                    │  └─ operatorToken
-   │                    │     ├─ type: Literal
-   │                    │     └─ value: :
-   │                    ├─ 3
-   │                    │  ├─ type: Comment
-   │                    │  └─ value: 
-Construct a new animal.
-
-@param [String] name the name of the animal
-@param [Date] birthDate when the animal was born
-
-   │                    ├─ 4
-   │                    │  ├─ type: Assign
-   │                    │  ├─ name: constructor
-   │                    │  ├─ variable
-   │                    │  │  ├─ type: Value
-   │                    │  │  ├─ value: constructor
-   │                    │  │  └─ base
-   │                    │  │     ├─ type: Literal
-   │                    │  │     └─ value: constructor
-   │                    │  ├─ value
-   │                    │  │  ├─ type: Code
-   │                    │  │  ├─ params
-   │                    │  │  │  ├─ 0
-   │                    │  │  │  │  ├─ type: Param
-   │                    │  │  │  │  └─ name
-   │                    │  │  │  │     ├─ type: Value
-   │                    │  │  │  │     ├─ value: this.type
-   │                    │  │  │  │     ├─ base
-   │                    │  │  │  │     │  ├─ type: Literal
-   │                    │  │  │  │     │  └─ value: this
-   │                    │  │  │  │     └─ properties
-   │                    │  │  │  │        └─ 0
-   │                    │  │  │  │           ├─ type: Access
-   │                    │  │  │  │           ├─ value: .type
-   │                    │  │  │  │           └─ name
-   │                    │  │  │  │              ├─ type: Literal
-   │                    │  │  │  │              └─ value: type
-   │                    │  │  │  ├─ 1
-   │                    │  │  │  │  ├─ type: Param
-   │                    │  │  │  │  └─ name
-   │                    │  │  │  │     ├─ type: Value
-   │                    │  │  │  │     ├─ value: this.name
-   │                    │  │  │  │     ├─ base
-   │                    │  │  │  │     │  ├─ type: Literal
-   │                    │  │  │  │     │  └─ value: this
-   │                    │  │  │  │     └─ properties
-   │                    │  │  │  │        └─ 0
-   │                    │  │  │  │           ├─ type: Access
-   │                    │  │  │  │           ├─ value: .name
-   │                    │  │  │  │           └─ name
-   │                    │  │  │  │              ├─ type: Literal
-   │                    │  │  │  │              └─ value: name
-   │                    │  │  │  └─ 2
-   │                    │  │  │     ├─ type: Param
-   │                    │  │  │     ├─ name
-   │                    │  │  │     │  ├─ type: Value
-   │                    │  │  │     │  ├─ value: this.birthDate
-   │                    │  │  │     │  ├─ base
-   │                    │  │  │     │  │  ├─ type: Literal
-   │                    │  │  │     │  │  └─ value: this
-   │                    │  │  │     │  └─ properties
-   │                    │  │  │     │     └─ 0
-   │                    │  │  │     │        ├─ type: Access
-   │                    │  │  │     │        ├─ value: .birthDate
-   │                    │  │  │     │        └─ name
-   │                    │  │  │     │           ├─ type: Literal
-   │                    │  │  │     │           └─ value: birthDate
-   │                    │  │  │     └─ value
-   │                    │  │  │        ├─ type: Call
-   │                    │  │  │        └─ variable
-   │                    │  │  │           ├─ type: Value
-   │                    │  │  │           ├─ value: Date
-   │                    │  │  │           └─ base
-   │                    │  │  │              ├─ type: Literal
-   │                    │  │  │              └─ value: Date
-   │                    │  │  └─ body
-   │                    │  │     ├─ type: Block
-   │                    │  │     └─ expressions
-   │                    │  │        └─ 0
-   │                    │  │           ├─ type: Comment
-   │                    │  │           └─ value: 
- Move the animal.
-
- @example Move an animal
-   new Lion('Simba').move('south', 12)
-
- @param [Object] options the moving options
- @option options [String] direction the moving direction
- @option options [Number] speed the speed in mph
- @public
-
-   │                    │  └─ operatorToken
-   │                    │     ├─ type: Literal
-   │                    │     └─ value: :
-   │                    └─ 5
-   │                       ├─ type: Assign
-   │                       ├─ name: move
-   │                       ├─ variable
-   │                       │  ├─ type: Value
-   │                       │  ├─ value: move
-   │                       │  └─ base
-   │                       │     ├─ type: Literal
-   │                       │     └─ value: move
-   │                       ├─ value
-   │                       │  ├─ type: Code
-   │                       │  ├─ params
-   │                       │  │  └─ 0
-   │                       │  │     ├─ type: Param
-   │                       │  │     ├─ name
-   │                       │  │     │  ├─ type: Literal
-   │                       │  │     │  └─ value: options
-   │                       │  │     └─ value
-   │                       │  │        ├─ type: Value
-   │                       │  │        └─ base
-   │                       │  │           └─ type: Obj
-   │                       │  └─ body
-   │                       │     └─ type: Block
-   │                       └─ operatorToken
-   │                          ├─ type: Literal
-   │                          └─ value: :
-   ├─ 2
-   │  ├─ type: Class
-   │  ├─ name: Tiger
-   │  ├─ variable
-   │  │  ├─ type: Value
-   │  │  ├─ value: Tiger
-   │  │  └─ base
-   │  │     ├─ type: Literal
-   │  │     └─ value: Tiger
-   │  ├─ parent
-   │  │  ├─ type: Value
-   │  │  ├─ value: Example.Animal
-   │  │  ├─ base
-   │  │  │  ├─ type: Literal
-   │  │  │  └─ value: Example
-   │  │  └─ properties
-   │  │     └─ 0
-   │  │        ├─ type: Access
-   │  │        ├─ value: .Animal
-   │  │        └─ name
-   │  │           ├─ type: Literal
-   │  │           └─ value: Animal
-   │  └─ body
-   │     ├─ type: Block
-   │     └─ expressions
-   │        └─ 0
-   │           ├─ type: Value
-   │           └─ base
-   │              ├─ type: Obj
-   │              └─ properties
-   │                 └─ 0
-   │                    ├─ type: Assign
-   │                    ├─ name: constructor
-   │                    ├─ variable
-   │                    │  ├─ type: Value
-   │                    │  ├─ value: constructor
-   │                    │  └─ base
-   │                    │     ├─ type: Literal
-   │                    │     └─ value: constructor
-   │                    ├─ value
-   │                    │  ├─ type: Code
-   │                    │  ├─ params
-   │                    │  │  ├─ 0
-   │                    │  │  │  ├─ type: Param
-   │                    │  │  │  └─ name
-   │                    │  │  │     ├─ type: Obj
-   │                    │  │  │     └─ properties
-   │                    │  │  │        └─ 0
-   │                    │  │  │           ├─ type: Value
-   │                    │  │  │           ├─ value: this.striped
-   │                    │  │  │           ├─ base
-   │                    │  │  │           │  ├─ type: Literal
-   │                    │  │  │           │  └─ value: this
-   │                    │  │  │           └─ properties
-   │                    │  │  │              └─ 0
-   │                    │  │  │                 ├─ type: Access
-   │                    │  │  │                 ├─ value: .striped
-   │                    │  │  │                 └─ name
-   │                    │  │  │                    ├─ type: Literal
-   │                    │  │  │                    └─ value: striped
-   │                    │  │  └─ 1
-   │                    │  │     ├─ type: Param
-   │                    │  │     └─ name
-   │                    │  │        ├─ type: Literal
-   │                    │  │        └─ value: abc
-   │                    │  └─ body
-   │                    │     ├─ type: Block
-   │                    │     └─ expressions
-   │                    │        └─ 0
-   │                    │           ├─ type: Call
-   │                    │           └─ args
-   │                    │              └─ 0
-   │                    │                 ├─ type: Value
-   │                    │                 ├─ value: 'Tiger'
-   │                    │                 └─ base
-   │                    │                    ├─ type: Literal
-   │                    │                    └─ value: 'Tiger'
-   │                    └─ operatorToken
-   │                       ├─ type: Literal
-   │                       └─ value: :
-   └─ 3
-      ├─ type: Assign
-      ├─ name: module.exports
-      ├─ value
-      │  ├─ type: Value
-      │  ├─ value: Tiger
-      │  └─ base
-      │     ├─ type: Literal
-      │     └─ value: Tiger
-      └─ variable
-         ├─ type: Value
-         ├─ value: module.exports
-         ├─ base
-         │  ├─ type: Literal
-         │  └─ value: module
-         └─ properties
-            └─ 0
-               ├─ type: Access
-               ├─ value: .exports
-               └─ name
-                  ├─ type: Literal
-                  └─ value: exports
-```
-
+# <a name='classes'>API</a>
+
+Class |  Summary
+------| ------------
+<code>[Walk](#class-Walk)</code> | Walk Coffeescript's AST nodes
+
+
+### <a name="class-Walk">Walk</a><b><sub><sup><code>CLASS </code></sup></sub></b><a href="#classes"><img src="https://rawgit.com/venkatperi/atomdoc-md/master/assets/octicons/arrow-up.svg" alt="Back to Class List" height= "18px"></a>
+
+<p>Walk Coffeescript&#39;s AST nodes</p>
+
+
+<table width="100%">
+  <tr>
+    <td colspan="4"><h4>Methods</h4></td>
+  </tr>
+  
+  <tr>
+    <td><code>:: <b>constructor(</b> __id, __type <b>)</b></code></td>
+    <td width="8%" align="center"><sub>public</sub></td>
+    <td width="8%" align="center"><sub>instance</sub></td>
+    <td width="8%" align="center"><sub><a href="#class-Walk">Walk</a></sub></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <ul>
+  <li><code>__id</code> A unique id (monotonically increasing count).</li>
+  <li><code>__type</code> The type of AST node (<code>node.constructor.name</code>)</li>
+  </ul>
+  
+      <p>Create AST Walker</p>
+  <p>If <code>init</code> is set, <code>astwalk</code> will perform an initial
+  walk over the AST tree and append a meta object as well as two
+  properties to each AST node:</p>
+  <h2 id="ast-node-meta-information">AST Node Meta Information</h2>
+  <p><code>astwalk</code> adds a property meta to Base which is the base class for
+   Coffeescript AST node classes. meta provides meta-information
+  about the node and in many cases, it rolls up information from
+  child nodes which can ease navigation and manipulation of the AST.</p>
+  
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td><code>:: <b>walk(</b> [depth][, context] <b>)</b></code></td>
+    <td width="8%" align="center"><sub>public</sub></td>
+    <td width="8%" align="center"><sub>instance</sub></td>
+    <td width="8%" align="center"><sub><a href="#class-Walk">Walk</a></sub></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <ul>
+  <li><code>depth</code> limits the walk up to <code>depth</code> levels from the <strong>current</strong> node (i.e. relative to the current node).</li>
+  <li><code>context</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object">Object</a> is available to the visitor callback.</li>
+  </ul>
+  
+      <p>Performs a walk -- calls the visitor for every node.</p>
+  <h2 id="about-the-visitor-visitor-node-">About the Visitor: visitor(node)</h2>
+  <p>The current node is passed ot the visitor. Additionaly,
+  the following properties are available in the <code>this</code> context
+   of the visitor callback:</p>
+  <ul>
+  <li><code>@path</code> The <code>path</code> to the current node as an array of strings.</li>
+  <li><code>@depth</code> The depth of the current node.</li>
+  <li><code>@isRoot</code> True if the node is the root node.</li>
+  <li><code>@isLeaf</code> True of the node is a leaf node.</li>
+  <li><code>@id</code> The <code>id</code> used to invoke the current node, also the last
+    element of the path array.</li>
+  <li><code>@isAstNode</code> True if the node is a coffeescript AST node, or a
+  scalar (string etc).</li>
+  <li><code>@context</code> An optional context, passed to walk.</li>
+  <li><code>@parent</code> The node&#39;s parent (undefined for root node).</li>
+  </ul>
+  <p>The visitor callback can invoke <code>@abort()</code> to terminate the walk early.</p>
+  <p> <strong>Visitor Return Value:</strong> If a visitor returns an <code><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object">Object</a></code>,
+  the values from visiting the current AST node&#39;s child nodes are
+  added to the object with the same key names as the original node.
+  This can be viewed as a mapping operation on the AST tree (see example at
+   the end).</p>
+  
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td><code>:: <b>findAll(</b> [depth], f <b>)</b></code></td>
+    <td width="8%" align="center"><sub>public</sub></td>
+    <td width="8%" align="center"><sub>instance</sub></td>
+    <td width="8%" align="center"><sub><a href="#class-Walk">Walk</a></sub></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <ul>
+  <li><code>depth</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">Number</a> limits the traversal depth</li>
+  <li><code>f</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">Function</a> is called with each node. The node is returned if <code>f</code> returns true.</li>
+  </ul>
+  
+      <p>Finds all nodes that satisfy the callback</p>
+  
+      <p>  <em>Returns</em></p>
+  <ul>
+  <li>Returns array of <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object">Object</a> ast nodes or .</li>
+  </ul>
+  
+    </td>
+  </tr>
+  
+  <tr>
+    <td><code>:: <b>findFirst(</b> [depth], f <b>)</b></code></td>
+    <td width="8%" align="center"><sub>public</sub></td>
+    <td width="8%" align="center"><sub>instance</sub></td>
+    <td width="8%" align="center"><sub><a href="#class-Walk">Walk</a></sub></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <ul>
+  <li><code>depth</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">Number</a> limits the traversal depth</li>
+  <li><code>f</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">Function</a> is called with each node. The node is returned if <code>f</code> returns true.</li>
+  </ul>
+  
+      <p>Finds the first node that satisfies the callback</p>
+  
+      <p>  <em>Returns</em></p>
+  <ul>
+  <li>Returns <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object">Object</a>, the ast node or .</li>
+  </ul>
+  
+    </td>
+  </tr>
+  
+  <tr>
+    <td><code>:: <b>findByType(</b> t[, depth] <b>)</b></code></td>
+    <td width="8%" align="center"><sub>public</sub></td>
+    <td width="8%" align="center"><sub>instance</sub></td>
+    <td width="8%" align="center"><sub><a href="#class-Walk">Walk</a></sub></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <ul>
+  <li><code>t</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">String</a> the node type to search for.</li>
+  <li><code>depth</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">Number</a> limits the traversal depth</li>
+  </ul>
+  
+      <p>Finds all nodes with the given CoffeeScript node type.</p>
+  
+      <p>  <em>Returns</em></p>
+  <ul>
+  <li>Returns array of <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object">Object</a> ast nodes or .</li>
+  </ul>
+  
+    </td>
+  </tr>
+  
+  <tr>
+    <td><code>:: <b>findFirstByType(</b> t[, depth] <b>)</b></code></td>
+    <td width="8%" align="center"><sub>public</sub></td>
+    <td width="8%" align="center"><sub>instance</sub></td>
+    <td width="8%" align="center"><sub><a href="#class-Walk">Walk</a></sub></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <ul>
+  <li><code>t</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String">String</a> the node type to search for.</li>
+  <li><code>depth</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number">Number</a> limits the traversal depth</li>
+  </ul>
+  
+      <p>Finds the first node with the given CoffeeScript node type.</p>
+  
+      <p>  <em>Returns</em></p>
+  <ul>
+  <li>Returns <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object">Object</a> ast node or .</li>
+  </ul>
+  
+    </td>
+  </tr>
+  
+  <tr>
+    <td><code>:: <b>reduce(</b>  <b>)</b></code></td>
+    <td width="8%" align="center"><sub>public</sub></td>
+    <td width="8%" align="center"><sub>instance</sub></td>
+    <td width="8%" align="center"><sub><a href="#class-Walk">Walk</a></sub></td>
+  </tr>
+  <tr>
+    <td colspan="4">
+      <ul>
+  <li><code>acc</code> The initial value of the accumulator</li>
+  <li><code>f</code> <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">Function</a> called with each node: <code>f(node, acc)</code>.</li>
+  </ul>
+  
+      <p>Performs a <code>reduce</code> operation on the AST tree</p>
+  <p>Updates an internal <strong>accumulator</strong> to the value returned by
+  <code>f(node, acc)</code> and returns the final value of acc.</p>
+  
+      <p>  <em>Returns</em></p>
+  <ul>
+  <li>Returns the final accumulator value.</li>
+  </ul>
+  
+    </td>
+  </tr>
+  
+</table>
+
+
+
+
+<br>
+<sub>Markdown generated by [atomdoc-md](https://github.com/venkatperi/atomdoc-md).</sub>
